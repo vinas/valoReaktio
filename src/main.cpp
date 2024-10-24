@@ -15,7 +15,7 @@ Button buttonSelect(2);
 Button buttonConfirm(3);
 LiquidCrystal_I2C lcd(0x27, 16, 2);
 
-void handleStartDetectionMode();
+void handleTimeUp();
 void sortSensor();
 void handleDetection();
 void handleLapResult();
@@ -23,6 +23,7 @@ void handleEndGame();
 void handleEndGameResults();
 void blinkGameLed();
 void resetLap();
+void handleDetectionTimeCounting();
 void printResultsSerial();
 void printResultsLCD();
 void turnOffSensorLeds();
@@ -35,7 +36,6 @@ void handleButtonConfirm();
 void printGameParams();
 void printGameOption();
 void handleGameReset();
-void handleIsTimeUp();
 void lcdPrint(String text, int row, bool clear);
 
 long startMillis,
@@ -45,7 +45,7 @@ long startMillis,
   avarage,
   fastest,
   slowest;
-unsigned long startGameMillis = 0, gameParams = 0, gameParamsSettings[2][2] = {{10, 100}, {30000, 180000}};
+unsigned long startGameMillis = 0, gameParams = 0, gameParamsSettings[2][2] = {{3, 100}, {5000, 180000}};
 int selectedSensor,
   lastSelectedSensor,
   gameLength,
@@ -63,48 +63,47 @@ void setup() {
 }
 
 void loop() {
-  handleIsTimeUp();
+  handleTimeUp();
   handleButtonSelect();
   handleButtonConfirm();
 
   if (detecting == true) {
-    handleStartDetectionMode();
+    handleDetectionTimeCounting();
     handleDetection();
     return;
   }
 
   if (detected == true) {
-    handleLapResult();
+    turnOffSensorLeds();
     resetLap();
-    if (!selectedGame) {
-      if (gameLap == gameLength) {
-        handleEndGame();
-        return;
-      }
-      delay(random(500, 3500));
+    if (!selectedGame && gameLap == gameLength) {
+      handleEndGame();
     }
-    return;
   }
 
   if (gameOn == true) {
-    delay(3000);
-    blinkGameLed();
-    delay(500);
-    digitalWrite(gameLed, HIGH);
-    lcdPrint("    GAME ON!    ", 0, true);
-    if (selectedGame) {
-      startGameMillis = millis();
+    if (gameLap == 0) {
+      delay(3000);
+      blinkGameLed();
+      delay(500);
+      digitalWrite(gameLed, HIGH);
+      lcdPrint("    GAME ON!    ", 0, true);
+      if (selectedGame) {
+        startGameMillis = millis();
+      }
     }
+    if (!selectedGame) {
+      delay(random(500, 3500));
+    }
+    sortSensor();
     detecting = true;
     return;
   }
 }
 
-void handleStartDetectionMode() {
-  if (countingDetection == false) {
-    sortSensor();
-    startMillis = millis();
-    countingDetection = true;
+void handleTimeUp() {
+  if (selectedGame && startGameMillis > 0 && millis() - startGameMillis > gameParams) {
+    handleEndGame();
   }
 }
 
@@ -115,13 +114,15 @@ void sortSensor() {
       selectedSensor = random(4);
     };
     lastSelectedSensor = selectedSensor;
+    return;
   }
-  digitalWrite(sensors[selectedSensor][1], HIGH);
+  
 }
 
 void handleDetection() {
+  digitalWrite(sensors[selectedSensor][1], HIGH);
   if (!digitalRead(sensors[selectedSensor][0])) {
-    digitalWrite(sensors[selectedSensor][1], LOW);
+    handleLapResult();
     detected = true;
     detecting = false;
   }
@@ -196,8 +197,15 @@ void blinkGameLed() {
 void resetLap() {
   detected = false;
   countingDetection = false;
-  detecting = true;
+  detecting = false;
   gameLap++;
+}
+
+void handleDetectionTimeCounting() {
+  if (countingDetection == false) {
+    startMillis = millis();
+    countingDetection = true;
+  }
 }
 
 void printResultsSerial() {
@@ -397,12 +405,6 @@ void handleGameReset() {
     avarage = 0;
     memset(results, 0, sizeof(results));
     gameLap = 0;
-}
-
-void handleIsTimeUp() {
-  if (selectedGame && startGameMillis > 0 && millis() - startGameMillis > gameParams) {
-    handleEndGame();
-  }
 }
 
 void lcdPrint(String text, int row, bool clear) {
