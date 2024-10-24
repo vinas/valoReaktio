@@ -38,24 +38,26 @@ void handleButtonConfirm();
 void printGameParams();
 void printGameOption();
 void handleGameReset();
+void resetGameProps();
 void lcdPrint(String text, int row, bool clear);
 
+const int MAX_ROUNDS = 100;
 long startMillis,
   endMillis,
   responseTime,
-  results[200],
+  sequence[MAX_ROUNDS],
+  results[MAX_ROUNDS],
   avarage,
   fastest,
   slowest;
-unsigned long startGameMillis = 0, gameParams = 0, gameParamsSettings[2][2] = {{3, 100}, {5000, 180000}};
+unsigned long startGameMillis = 0, gameParams = 0, gameParamsSettings[3][2] = {{10, MAX_ROUNDS}, {30000, 180000}, {0, 0}};
 int selectedSensor,
   lastSelectedSensor,
   gameLength,
   gameLap = 0,
-  isSelecting = 0,
-  isGameSelected = 0,
-  selectedGame = 0;
-bool detecting, detected, countingDetection, gameOn;
+  totGames = 3,
+  selectedGame = -1; // 0 = REACT, 1 = SPEED, 3 = MEMORY
+bool detecting, detected, countingDetection, gameOn, isGameSelected = false;
 
 void setup() {
   initLCD();
@@ -87,7 +89,7 @@ void loop() {
 
 void handleDetected() {
   resetLap();
-  if (!selectedGame) {
+  if (selectedGame == 0) {
     if (gameLap == gameLength) {
       handleEndGame();
       return;
@@ -102,21 +104,21 @@ void handleStartGame() {
     delay(500);
     digitalWrite(gameLed, HIGH);
     lcdPrint("    GAME ON!    ", 0, true);
-    if (selectedGame) {
+    if (selectedGame == 1) {
       startGameMillis = millis();
     }
     detecting = true;
 }
 
 void handleTimeUp() {
-  if (selectedGame && startGameMillis > 0 && millis() - startGameMillis > gameParams) {
+  if (selectedGame == 1 && startGameMillis > 0 && millis() - startGameMillis > gameParams) {
     handleEndGame();
   }
 }
 
 void sortSensor() {
   selectedSensor = random(4);
-  if (selectedGame) {
+  if (selectedGame == 1) {
     while (selectedSensor == lastSelectedSensor) {
       selectedSensor = random(4);
     };
@@ -136,8 +138,10 @@ void handleDetection() {
 
 void handleLapResult() {
   endMillis = millis();
-  responseTime = endMillis - startMillis;
-  results[gameLap] = responseTime;
+  if (selectedGame == 0) {
+    responseTime = endMillis - startMillis;
+    results[gameLap] = responseTime;
+  }
 }
 
 void handleEndGame() {
@@ -145,6 +149,13 @@ void handleEndGame() {
   delay(200);
   lcdPrint("   GAME OVER    ", 0, true);
   blinkGameLed();
+  handleEndGameResults();
+  printResultsLCD();
+  printResultsSerial();
+  resetGameProps();
+}
+
+void resetGameProps() {
   gameOn = false;
   detecting = false;
   detected = false;
@@ -155,29 +166,29 @@ void handleEndGame() {
   countingDetection = false;
   startMillis = 0;
   endMillis = 0;
-  handleEndGameResults();
-  printResultsSerial();
-  printResultsLCD();
-  turnOffSensorLeds();
+  isGameSelected = false;
+  selectedGame = -1;
 }
 
 void handleEndGameResults() {
-  long totalResponseTime = 0;
-  for (int i = 0; i < gameLap; i++) {
-    long result = results[i];
-    if (i == 0) {
-      slowest = result;
-      fastest = result;
+  if (selectedGame == 0) {
+    long totalResponseTime = 0;
+    for (int i = 0; i < gameLap; i++) {
+      long result = results[i];
+      if (i == 0) {
+        slowest = result;
+        fastest = result;
+      }
+      if (result > slowest) {
+        slowest = result;
+      }
+      if (result < fastest) {
+        fastest = result;
+      }
+      totalResponseTime = totalResponseTime + result;
     }
-    if (result > slowest) {
-      slowest = result;
-    }
-    if (result < fastest) {
-      fastest = result;
-    }
-    totalResponseTime = totalResponseTime + result;
+    avarage = totalResponseTime / gameLap;
   }
-  avarage = totalResponseTime / gameLap;
 }
 
 void blinkGameLed() {
@@ -216,52 +227,60 @@ void handleDetectionTimeCounting() {
 }
 
 void printResultsSerial() {
-  Serial.println();
-  Serial.println();
-  Serial.println("*************************");
-  Serial.println("**    FINAL RESULTS    **");
-  Serial.println("*************************");
-  Serial.println();
-  for (int i = 0; i < gameLap; i++) {
-    Serial.print(i + 1);
-    Serial.print(" - ");
-    Serial.print(results[i]);
+  if (selectedGame == 0) {
+    Serial.println();
+    Serial.println();
+    Serial.println("*************************");
+    Serial.println("**    FINAL RESULTS    **");
+    Serial.println("*************************");
+    Serial.println();
+    for (int i = 0; i < gameLap; i++) {
+      Serial.print(i + 1);
+      Serial.print(" - ");
+      Serial.print(results[i]);
+      Serial.println("ms");
+    }
+    Serial.println();
+    Serial.print("avarage - ");
+    Serial.print(avarage);
     Serial.println("ms");
+    Serial.println();
+    Serial.print("slowest - ");
+    Serial.print(slowest);
+    Serial.println("ms");
+    Serial.print("fastest - ");
+    Serial.print(fastest);
+    Serial.println("ms");
+    Serial.println();
+    Serial.println("*************************");
+    Serial.println();
+    Serial.println();
   }
-  Serial.println();
-  Serial.print("avarage - ");
-  Serial.print(avarage);
-  Serial.println("ms");
-  Serial.println();
-  Serial.print("slowest - ");
-  Serial.print(slowest);
-  Serial.println("ms");
-  Serial.print("fastest - ");
-  Serial.print(fastest);
-  Serial.println("ms");
-  Serial.println();
-  Serial.println("*************************");
-  Serial.println();
-  Serial.println();
 }
 
 void printResultsLCD() {
   String lcdRow0, lcdRow1;
-  if (selectedGame) {
-    lcdRow0 = "Time: ";
-    lcdRow0.concat(gameParams / 1000);
-    lcdRow0.concat(" secs    ");
-    lcdRow1 = "Total: ";
-    lcdRow1.concat(gameLap);
-    lcdRow1.concat(" hits   ");
-  } else {
-    lcdRow0 = "Media: ";
-    lcdRow0.concat(avarage);
-    lcdRow0.concat("ms");
-    lcdRow1 = "-: ";
-    lcdRow1.concat(fastest);
-    lcdRow1.concat("  +: ");
-    lcdRow1.concat(slowest);
+  switch (selectedGame) {
+    case 0:
+      lcdRow0 = "Media: ";
+      lcdRow0.concat(avarage);
+      lcdRow0.concat("ms");
+      lcdRow1 = "-: ";
+      lcdRow1.concat(fastest);
+      lcdRow1.concat("  +: ");
+      lcdRow1.concat(slowest);
+      break;
+    case 1:
+      lcdRow0 = "Time: ";
+      lcdRow0.concat(gameParams / 1000);
+      lcdRow0.concat(" secs    ");
+      lcdRow1 = "Total: ";
+      lcdRow1.concat(gameLap);
+      lcdRow1.concat(" hits   ");
+      break;
+    case 2:
+      lcdRow0 = "SPEED ln 1";
+      lcdRow1 = "SPEED ln 1";
   }
   lcdPrint(lcdRow0, 0, true);
   lcdPrint(lcdRow1, 1, false);
@@ -319,16 +338,8 @@ void handleButtonSelect() {
   buttonSelect.read();
   if (buttonSelect.wasPressed()) {
     handleGameReset();
-    if (!isSelecting) {
-      digitalWrite(gameLed, LOW);
-      isSelecting = 1;
-      selectedGame = 0;
-      lcdPrint("  Select game:  ", 0, true);
-      printGameOption();
-      return;
-    }
     if (isGameSelected) {
-      if (gameParams == gameParamsSettings[selectedGame][1]) {
+      if (gameParams >= gameParamsSettings[selectedGame][1]) {
         gameParams = gameParamsSettings[selectedGame][0];
       } else {
         gameParams = gameParams + gameParamsSettings[selectedGame][0];
@@ -336,7 +347,11 @@ void handleButtonSelect() {
       printGameParams();
       return;
     }
-    selectedGame = !selectedGame;
+    selectedGame++;
+    if (selectedGame == totGames) {
+      selectedGame = 0;
+    }
+    lcdPrint("  Select mode:  ", 0, true);
     printGameOption();
   }
 }
@@ -348,33 +363,36 @@ void handleButtonConfirm() {
       if (isGameSelected) {
         String txt;
         gameLength = gameParams;
-        isSelecting = 0;
-        isGameSelected = 0;
+        isGameSelected = false;
         gameOn = true;
-        if (selectedGame) {
+        if (selectedGame == 1) {
           txt = "SPEED ";
           txt.concat(gameParams / 1000);
           txt.concat(" secs:  ");
-          lcdPrint(txt, 0, true);
         } else {
           txt = "REACT ";
           txt.concat(gameParams);
           txt.concat(" rounds:");
-          lcdPrint(txt, 0, false);
         }
+        lcdPrint(txt, 0, false);
         lcdPrint("3 blinks n start", 1, false);
         return;
       }
-      if (isSelecting) {
-        isGameSelected = 1;
-        if (selectedGame) {
-          lcdPrint("Game: SPEED", 0, true);
-        } else {
-          lcdPrint("Game: REACT", 0, true);
-        }
-        gameParams = gameParamsSettings[selectedGame][0];
-        printGameParams();
+      isGameSelected = true;
+      switch (selectedGame) {
+        case 0:
+          lcdPrint("Mode: REACT", 0, true);
+          break;
+        case 1:
+          lcdPrint("Mode: SPEED", 0, true);
+          break;
+        case 2:
+          isGameSelected = false;
+          gameOn = true;
+          return;
       }
+      gameParams = gameParamsSettings[selectedGame][0];
+      printGameParams();
     }
   }
 }
@@ -382,7 +400,7 @@ void handleButtonConfirm() {
 void printGameParams() {
   lcd.setCursor(0, 1);
   String txt;
-  if (selectedGame) {
+  if (selectedGame == 1) {
     txt = "set time > ";
     txt.concat(gameParams / 1000);
     txt.concat(" s ");
@@ -396,11 +414,18 @@ void printGameParams() {
 }
 
 void printGameOption() {
-  if (selectedGame) {
-    lcdPrint("---> SPEED <----", 1, false);
-    return;
+  switch (selectedGame) {
+    case  0:
+      lcdPrint("---> REACT <----", 1, false);
+      return;
+    case 1:
+      lcdPrint("---> SPEED <----", 1, false);
+      return;
+    case 2:
+      lcdPrint("---> MEMORY <---", 1, false);
+      return;
   }
-  lcdPrint("---> REACT <----", 1, false);
+  
 }
 
 void handleGameReset() {
