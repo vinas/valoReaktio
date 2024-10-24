@@ -16,6 +16,8 @@ Button buttonConfirm(3);
 LiquidCrystal_I2C lcd(0x27, 16, 2);
 
 void handleTimeUp();
+void handleStartGame();
+void handleDetected();
 void sortSensor();
 void handleDetection();
 void handleLapResult();
@@ -74,31 +76,36 @@ void loop() {
   }
 
   if (detected == true) {
-    turnOffSensorLeds();
-    resetLap();
-    if (!selectedGame && gameLap == gameLength) {
-      handleEndGame();
-    }
-  }
-
-  if (gameOn == true) {
-    if (gameLap == 0) {
-      delay(3000);
-      blinkGameLed();
-      delay(500);
-      digitalWrite(gameLed, HIGH);
-      lcdPrint("    GAME ON!    ", 0, true);
-      if (selectedGame) {
-        startGameMillis = millis();
-      }
-    }
-    if (!selectedGame) {
-      delay(random(500, 3500));
-    }
-    sortSensor();
-    detecting = true;
+    handleDetected();
     return;
   }
+
+  if (gameOn == true && gameLap == 0) {
+    handleStartGame();
+  }
+}
+
+void handleDetected() {
+  resetLap();
+  if (!selectedGame) {
+    if (gameLap == gameLength) {
+      handleEndGame();
+      return;
+    }
+    delay(random(500, 3500));
+  }
+}
+
+void handleStartGame() {
+    delay(3000);
+    blinkGameLed();
+    delay(500);
+    digitalWrite(gameLed, HIGH);
+    lcdPrint("    GAME ON!    ", 0, true);
+    if (selectedGame) {
+      startGameMillis = millis();
+    }
+    detecting = true;
 }
 
 void handleTimeUp() {
@@ -114,14 +121,13 @@ void sortSensor() {
       selectedSensor = random(4);
     };
     lastSelectedSensor = selectedSensor;
-    return;
   }
-  
+  digitalWrite(sensors[selectedSensor][1], HIGH);
 }
 
 void handleDetection() {
-  digitalWrite(sensors[selectedSensor][1], HIGH);
   if (!digitalRead(sensors[selectedSensor][0])) {
+    digitalWrite(sensors[selectedSensor][1], LOW);
     handleLapResult();
     detected = true;
     detecting = false;
@@ -197,12 +203,13 @@ void blinkGameLed() {
 void resetLap() {
   detected = false;
   countingDetection = false;
-  detecting = false;
+  detecting = true;
   gameLap++;
 }
 
 void handleDetectionTimeCounting() {
   if (countingDetection == false) {
+    sortSensor();
     startMillis = millis();
     countingDetection = true;
   }
