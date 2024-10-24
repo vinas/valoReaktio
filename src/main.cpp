@@ -15,6 +15,7 @@ Button buttonSelect(2);
 Button buttonConfirm(3);
 LiquidCrystal_I2C lcd(0x27, 16, 2);
 
+void handleStartDetectionMode();
 void sortSensor();
 void handleDetection();
 void handleLapResult();
@@ -22,7 +23,6 @@ void handleEndGame();
 void handleEndGameResults();
 void blinkGameLed();
 void resetLap();
-void handleStartDetectionMode();
 void printResultsSerial();
 void printResultsLCD();
 void turnOffSensorLeds();
@@ -100,6 +100,14 @@ void loop() {
   }
 }
 
+void handleStartDetectionMode() {
+  if (countingDetection == false) {
+    sortSensor();
+    startMillis = millis();
+    countingDetection = true;
+  }
+}
+
 void sortSensor() {
   selectedSensor = random(4);
   if (selectedGame) {
@@ -107,7 +115,6 @@ void sortSensor() {
       selectedSensor = random(4);
     };
     lastSelectedSensor = selectedSensor;
-    return;
   }
   digitalWrite(sensors[selectedSensor][1], HIGH);
 }
@@ -191,14 +198,6 @@ void resetLap() {
   countingDetection = false;
   detecting = true;
   gameLap++;
-}
-
-void handleStartDetectionMode() {
-  if (countingDetection == false) {
-    sortSensor();
-    startMillis = millis();
-    countingDetection = true;
-  }
 }
 
 void printResultsSerial() {
