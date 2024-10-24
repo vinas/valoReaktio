@@ -22,7 +22,7 @@ void handleEndGame();
 void handleEndGameResults();
 void blinkGameLed();
 void resetLap();
-void handleDetectionTimeCounting();
+void handleStartDetectionMode();
 void printResultsSerial();
 void printResultsLCD();
 void turnOffSensorLeds();
@@ -35,6 +35,7 @@ void handleButtonConfirm();
 void printGameParams();
 void printGameOption();
 void handleGameReset();
+void handleIsTimeUp();
 void lcdPrint(String text, int row, bool clear);
 
 long startMillis,
@@ -62,45 +63,38 @@ void setup() {
 }
 
 void loop() {
+  handleIsTimeUp();
   handleButtonSelect();
   handleButtonConfirm();
 
   if (detecting == true) {
-    if (selectedGame && startGameMillis > 0 && millis() - startGameMillis > gameParams) {
-      handleEndGame();
-      return;
-    }
-    handleDetectionTimeCounting();
+    handleStartDetectionMode();
     handleDetection();
     return;
   }
 
   if (detected == true) {
-    turnOffSensorLeds();
+    handleLapResult();
     resetLap();
-    if (!selectedGame && gameLap == gameLength) {
-      handleEndGame();
+    if (!selectedGame) {
+      if (gameLap == gameLength) {
+        handleEndGame();
+        return;
+      }
+      delay(random(500, 3500));
     }
+    return;
   }
 
   if (gameOn == true) {
-    if (selectedGame && startGameMillis > 0 && millis() - startGameMillis > gameParams) {
-      handleEndGame();
+    delay(3000);
+    blinkGameLed();
+    delay(500);
+    digitalWrite(gameLed, HIGH);
+    lcdPrint("    GAME ON!    ", 0, true);
+    if (selectedGame) {
+      startGameMillis = millis();
     }
-    if (gameLap == 0) {
-      delay(3000);
-      blinkGameLed();
-      delay(500);
-      digitalWrite(gameLed, HIGH);
-      lcdPrint("    GAME ON!    ", 0, true);
-      if (selectedGame) {
-        startGameMillis = millis();
-      }
-    }
-    if (!selectedGame) {
-      delay(random(500, 3500));
-    }
-    sortSensor();
     detecting = true;
     return;
   }
@@ -115,13 +109,12 @@ void sortSensor() {
     lastSelectedSensor = selectedSensor;
     return;
   }
-  
+  digitalWrite(sensors[selectedSensor][1], HIGH);
 }
 
 void handleDetection() {
-  digitalWrite(sensors[selectedSensor][1], HIGH);
   if (!digitalRead(sensors[selectedSensor][0])) {
-    handleLapResult();
+    digitalWrite(sensors[selectedSensor][1], LOW);
     detected = true;
     detecting = false;
   }
@@ -196,12 +189,13 @@ void blinkGameLed() {
 void resetLap() {
   detected = false;
   countingDetection = false;
-  detecting = false;
+  detecting = true;
   gameLap++;
 }
 
-void handleDetectionTimeCounting() {
+void handleStartDetectionMode() {
   if (countingDetection == false) {
+    sortSensor();
     startMillis = millis();
     countingDetection = true;
   }
@@ -404,6 +398,12 @@ void handleGameReset() {
     avarage = 0;
     memset(results, 0, sizeof(results));
     gameLap = 0;
+}
+
+void handleIsTimeUp() {
+  if (selectedGame && startGameMillis > 0 && millis() - startGameMillis > gameParams) {
+    handleEndGame();
+  }
 }
 
 void lcdPrint(String text, int row, bool clear) {
