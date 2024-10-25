@@ -365,7 +365,9 @@ void handleButtonSelect() {
       return;
     }
     selectedGame++;
-    if (selectedGame == AMOUNT_OF_MODES) {
+    // if (selectedGame == AMOUNT_OF_MODES) {
+    // Hiding Memory mode for now
+    if (selectedGame == AMOUNT_OF_MODES - 1) {
       selectedGame = 0;
     }
     lcdPrint("  Select mode:  ", 0, true);
