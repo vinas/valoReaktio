@@ -1,19 +1,55 @@
 #include <Wire.h>
 #include <LiquidCrystal_I2C.h>
 #include <EEPROM.h>
+#include <NewPing.h>
 #include "ButtonClass.h"
 
-const int gameLed = 12,
-          sensors[4][2] = {
-            {4, 5},
-            {6, 7},
-            {8, 9},
-            {10, 11}
-          };
+const int GAME_LED = 14,
+  sensors[4][3] = {
+    {2, 3, 4},
+    {5, 6, 7},
+    {8, 9, 10},
+    {11, 12, 17}
+  },
+  MAX_ROUNDS = 100,
+  DETECTION_RANGE = 15,
+  MAX_DETECTION_RANGE = 100,
+  AMOUNT_OF_MODES = 3;
 
-Button buttonSelect(2);
-Button buttonConfirm(3);
+unsigned long startGameMillis = 0, gameParams = 0, gameParamsSettings[3][2] = {{10, MAX_ROUNDS}, {30000, 180000}, {0, 0}};
+
+long startMillis,
+  endMillis,
+  responseTime,
+  sequence[MAX_ROUNDS],
+  results[MAX_ROUNDS],
+  avarage,
+  fastest,
+  slowest;
+
+int selectedSensor,
+  lastSelectedSensor,
+  gameLength,
+  distance,
+  gameLap = 0,
+  selectedGame = -1; // 0 = REACT, 1 = SPEED, 3 = MEMORY
+
+bool detecting,
+  detected,
+  countingDetection,
+  gameOn,
+  isGameSelected = false;
+
+Button buttonSelect(15);
+Button buttonConfirm(16);
 LiquidCrystal_I2C lcd(0x27, 16, 2);
+
+NewPing sonar[4] = {
+  NewPing(sensors[0][0], sensors[0][1], 100),
+  NewPing(sensors[1][0], sensors[1][1], 100),
+  NewPing(sensors[2][0], sensors[2][1], 100),
+  NewPing(sensors[3][0], sensors[3][1], 100)
+};
 
 void handleTimeUp();
 void handleStartGame();
@@ -25,7 +61,7 @@ void handleEndGame();
 void handleEndGameResults();
 void blinkGameLed();
 void resetLap();
-void handleDetectionTimeCounting();
+void handleDetectionStart();
 void printResultsSerial();
 void printResultsLCD();
 void turnOffSensorLeds();
@@ -41,24 +77,6 @@ void handleGameReset();
 void resetGameProps();
 void lcdPrint(String text, int row, bool clear);
 
-const int MAX_ROUNDS = 100;
-long startMillis,
-  endMillis,
-  responseTime,
-  sequence[MAX_ROUNDS],
-  results[MAX_ROUNDS],
-  avarage,
-  fastest,
-  slowest;
-unsigned long startGameMillis = 0, gameParams = 0, gameParamsSettings[3][2] = {{10, MAX_ROUNDS}, {30000, 180000}, {0, 0}};
-int selectedSensor,
-  lastSelectedSensor,
-  gameLength,
-  gameLap = 0,
-  totGames = 3,
-  selectedGame = -1; // 0 = REACT, 1 = SPEED, 3 = MEMORY
-bool detecting, detected, countingDetection, gameOn, isGameSelected = false;
-
 void setup() {
   initLCD();
   initPins();
@@ -72,7 +90,7 @@ void loop() {
   handleButtonConfirm();
 
   if (detecting == true) {
-    handleDetectionTimeCounting();
+    handleDetectionStart();
     handleDetection();
     return;
   }
@@ -102,7 +120,7 @@ void handleStartGame() {
     delay(3000);
     blinkGameLed();
     delay(500);
-    digitalWrite(gameLed, HIGH);
+    digitalWrite(GAME_LED, HIGH);
     lcdPrint("    GAME ON!    ", 0, true);
     if (selectedGame == 1) {
       startGameMillis = millis();
@@ -124,12 +142,13 @@ void sortSensor() {
     };
     lastSelectedSensor = selectedSensor;
   }
-  digitalWrite(sensors[selectedSensor][1], HIGH);
+  digitalWrite(sensors[selectedSensor][2], HIGH);
 }
 
 void handleDetection() {
-  if (!digitalRead(sensors[selectedSensor][0])) {
-    digitalWrite(sensors[selectedSensor][1], LOW);
+  distance = sonar[selectedSensor].ping() / US_ROUNDTRIP_CM;
+  if (distance > 0 && distance < DETECTION_RANGE) {
+    digitalWrite(sensors[selectedSensor][2], LOW);
     handleLapResult();
     detected = true;
     detecting = false;
@@ -145,7 +164,7 @@ void handleLapResult() {
 }
 
 void handleEndGame() {
-  digitalWrite(gameLed, LOW);
+  digitalWrite(GAME_LED, LOW);
   delay(200);
   lcdPrint("   GAME OVER    ", 0, true);
   blinkGameLed();
@@ -167,7 +186,9 @@ void resetGameProps() {
   startMillis = 0;
   endMillis = 0;
   isGameSelected = false;
+  gameLap = 0;
   selectedGame = -1;
+  memset(results, 0, sizeof(results));
 }
 
 void handleEndGameResults() {
@@ -192,22 +213,22 @@ void handleEndGameResults() {
 }
 
 void blinkGameLed() {
-  digitalWrite(gameLed, HIGH);
+  digitalWrite(GAME_LED, HIGH);
   turnOnSensorLeds();
   delay(400);
-  digitalWrite(gameLed, LOW);
+  digitalWrite(GAME_LED, LOW);
   turnOffSensorLeds();
   delay(300);
-  digitalWrite(gameLed, HIGH);
+  digitalWrite(GAME_LED, HIGH);
   turnOnSensorLeds();
   delay(400);
-  digitalWrite(gameLed, LOW);
+  digitalWrite(GAME_LED, LOW);
   turnOffSensorLeds();
   delay(300);
-  digitalWrite(gameLed, HIGH);
+  digitalWrite(GAME_LED, HIGH);
   turnOnSensorLeds();
   delay(400 );
-  digitalWrite(gameLed, LOW);
+  digitalWrite(GAME_LED, LOW);
   turnOffSensorLeds();
 }
 
@@ -218,7 +239,7 @@ void resetLap() {
   gameLap++;
 }
 
-void handleDetectionTimeCounting() {
+void handleDetectionStart() {
   if (countingDetection == false) {
     sortSensor();
     startMillis = millis();
@@ -287,17 +308,17 @@ void printResultsLCD() {
 }
 
 void turnOffSensorLeds() {
-  digitalWrite(sensors[0][1], LOW);
-  digitalWrite(sensors[1][1], LOW);
-  digitalWrite(sensors[2][1], LOW);
-  digitalWrite(sensors[3][1], LOW);
+  digitalWrite(sensors[0][2], LOW);
+  digitalWrite(sensors[1][2], LOW);
+  digitalWrite(sensors[2][2], LOW);
+  digitalWrite(sensors[3][2], LOW);
 }
 
 void turnOnSensorLeds() {
-  digitalWrite(sensors[0][1], HIGH);
-  digitalWrite(sensors[1][1], HIGH);
-  digitalWrite(sensors[2][1], HIGH);
-  digitalWrite(sensors[3][1], HIGH);
+  digitalWrite(sensors[0][2], HIGH);
+  digitalWrite(sensors[1][2], HIGH);
+  digitalWrite(sensors[2][2], HIGH);
+  digitalWrite(sensors[3][2], HIGH);
 }
 
 void initLCD() {
@@ -311,15 +332,11 @@ void initLCD() {
 void initPins() {
   pinMode(buttonSelect.getPin(), INPUT_PULLUP);
   pinMode(buttonConfirm.getPin(), INPUT_PULLUP);
-  pinMode(sensors[0][0], INPUT);
-  pinMode(sensors[0][1], OUTPUT);
-  pinMode(sensors[1][0], INPUT);
-  pinMode(sensors[1][1], OUTPUT);
-  pinMode(sensors[2][0], INPUT);
-  pinMode(sensors[2][1], OUTPUT);
-  pinMode(sensors[3][0], INPUT);
-  pinMode(sensors[3][1], OUTPUT);
-  pinMode(gameLed, OUTPUT);
+  pinMode(sensors[0][2], OUTPUT);
+  pinMode(sensors[1][2], OUTPUT);
+  pinMode(sensors[2][2], OUTPUT);
+  pinMode(sensors[3][2], OUTPUT);
+  pinMode(GAME_LED, OUTPUT);
 }
 
 void initGame() {
@@ -348,7 +365,7 @@ void handleButtonSelect() {
       return;
     }
     selectedGame++;
-    if (selectedGame == totGames) {
+    if (selectedGame == AMOUNT_OF_MODES) {
       selectedGame = 0;
     }
     lcdPrint("  Select mode:  ", 0, true);
@@ -429,14 +446,10 @@ void printGameOption() {
 }
 
 void handleGameReset() {
-    gameOn = false;
+  if (gameOn) {
     turnOffSensorLeds();
-    detecting = false;
-    slowest = 0;
-    fastest = 0;
-    avarage = 0;
-    memset(results, 0, sizeof(results));
-    gameLap = 0;
+    resetGameProps();
+  }
 }
 
 void lcdPrint(String text, int row, bool clear) {
