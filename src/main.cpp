@@ -19,8 +19,8 @@ const int SENSORS[AMOUNT_OF_SENSORS][3] = {
 };
 
 unsigned long startGameMillis = 0,
-  gameParams = 0,
-  gameParamsSettings[AMOUNT_OF_MODES][2] = {
+  modeParams = 0,
+  modeParamsSettings[AMOUNT_OF_MODES][2] = {
     {30000, 180000},
     {10, MAX_ROUNDS},
     {0, 0},
@@ -38,16 +38,18 @@ long startMillis,
 
 int selectedSensor,
   lastSelectedSensor,
-  gameLength,
+  modeLength,
   gameLap,
   dots = 0,
-  selectedGame = -1; // 0 = REACT, 1 = SPEED, 3 = MEMORY, 4 = PURSUIT
+  selectedMode = -1; // 0 = REACT, 1 = SPEED, 3 = MEMORY, 4 = PURSUIT
+
+unsigned int lastDisplayedTime = 0;
 
 bool detecting,
   detected,
   countingDetection,
   gameOn,
-  isGameSelected;
+  isModeSelected;
 
 String sensorReportMsg[2] = {"", ""};
 
@@ -82,13 +84,14 @@ void initPins();
 void initRandomSeed();
 void handleButtonSelect();
 void handleButtonConfirm();
-void printGameParams();
-void printGameOption();
+void printModeParams();
+void printModeOption();
 void handleGameReset();
 void resetGameProps();
 void checkSensors();
 void printSensorsReport();
 void printMainMenu();
+void handleDisplayInfo();
 void lcdPrint(String text, int row, bool clear);
 bool senseSomething(int sensor);
 bool handleSensorStartRoutine(int sensor);
@@ -98,14 +101,18 @@ void setup() {
   initPins();
   initRandomSeed();
   checkSensors();
-  printSensorsReport();
+  // printSensorsReport();
   resetGameProps();
   printMainMenu();
   // Serial.begin(9600);
 }
 
 void loop() {
-  handleTimeUp();
+  if (gameOn && selectedMode == 0) {
+    handleDisplayInfo();
+    handleTimeUp();
+  }
+
   handleButtonSelect();
   handleButtonConfirm();
 
@@ -120,7 +127,7 @@ void loop() {
     return;
   }
 
-  if (gameOn == true && gameLap == 0) {
+  if (gameOn && gameLap == 0) {
     handleStartGame();
   }
 }
@@ -128,8 +135,8 @@ void loop() {
 void handleDetected() {
   Serial.println("pegou");
   resetLap();
-  if (selectedGame == 1) {
-    if (gameLap == gameLength) {
+  if (selectedMode == 1) {
+    if (gameLap == modeLength) {
       handleEndGame();
       return;
     }
@@ -143,14 +150,35 @@ void handleStartGame() {
     delay(500);
     digitalWrite(GAME_LED, HIGH);
     lcdPrint("    GAME ON!    ", 0, true);
-    if (selectedGame == 0) {
+    if (selectedMode == 0) {
       startGameMillis = millis();
     }
     detecting = true;
 }
 
+void handleDisplayInfo() {
+  String time;
+  unsigned int timeDiff;
+  time = "Hits: ";
+  time.concat(gameLap);
+  time.concat(" - ");
+  if (lastDisplayedTime == 0) {
+    lastDisplayedTime = modeParams / 1000;
+    time.concat(lastDisplayedTime);
+  } else {
+    timeDiff = millis() - startGameMillis;
+    timeDiff = timeDiff / 1000;
+    if (timeDiff != lastDisplayedTime) {
+      lastDisplayedTime = modeParams / 1000 - timeDiff;
+      time.concat(lastDisplayedTime);
+    }
+  }
+  time.concat("s    ");
+  lcdPrint(time, 1, false);
+}
+
 void handleTimeUp() {
-  if (selectedGame == 0 && startGameMillis > 0 && millis() - startGameMillis > gameParams) {
+  if (selectedMode == 0 && startGameMillis > 0 && millis() - startGameMillis > modeParams) {
     handleEndGame();
   }
 }
@@ -159,7 +187,7 @@ void sortSensor() {
   selectedSensor = random(AMOUNT_OF_SENSORS);
   Serial.println();
   Serial.println(selectedSensor);
-  if (selectedGame == 0) {
+  if (selectedMode == 0) {
     while (selectedSensor == lastSelectedSensor) {
       selectedSensor = random(AMOUNT_OF_SENSORS);
     };
@@ -179,7 +207,7 @@ void handleDetection() {
 
 void handleLapResult() {
   endMillis = millis();
-  if (selectedGame == 1) {
+  if (selectedMode == 1) {
     responseTime = endMillis - startMillis;
     results[gameLap] = responseTime;
   }
@@ -207,14 +235,15 @@ void resetGameProps() {
   countingDetection = false;
   startMillis = 0;
   endMillis = 0;
-  isGameSelected = false;
+  isModeSelected = false;
   gameLap = 0;
-  selectedGame = -1;
+  selectedMode = -1;
+  lastDisplayedTime = 0;
   memset(results, 0, sizeof(results));
 }
 
 void handleEndGameResults() {
-  if (selectedGame == 1) {
+  if (selectedMode == 1) {
     long totalResponseTime = 0;
     for (int i = 0; i < gameLap; i++) {
       long result = results[i];
@@ -270,7 +299,7 @@ void handleDetectionStart() {
 }
 
 void printResultsSerial() {
-  if (selectedGame == 1) {
+  if (selectedMode == 1) {
     Serial.println();
     Serial.println();
     Serial.println("*************************");
@@ -303,10 +332,10 @@ void printResultsSerial() {
 
 void printResultsLCD() {
   String lcdRow0, lcdRow1;
-  switch (selectedGame) {
+  switch (selectedMode) {
     case 0:
       lcdRow0 = "Time: ";
-      lcdRow0.concat(gameParams / 1000);
+      lcdRow0.concat(modeParams / 1000);
       lcdRow0.concat(" secs    ");
       lcdRow1 = "Total: ";
       lcdRow1.concat(gameLap);
@@ -375,23 +404,23 @@ void handleButtonSelect() {
       printMainMenu();
       return;
     }
-    if (isGameSelected) {
-      if (gameParams >= gameParamsSettings[selectedGame][1]) {
-        gameParams = gameParamsSettings[selectedGame][0];
+    if (isModeSelected) {
+      if (modeParams >= modeParamsSettings[selectedMode][1]) {
+        modeParams = modeParamsSettings[selectedMode][0];
       } else {
-        gameParams = gameParams + gameParamsSettings[selectedGame][0];
+        modeParams = modeParams + modeParamsSettings[selectedMode][0];
       }
-      printGameParams();
+      printModeParams();
       return;
     }
-    selectedGame++;
-    // if (selectedGame == AMOUNT_OF_MODES) {
+    selectedMode++;
+    // if (selectedMode == AMOUNT_OF_MODES) {
     // Hiding Memory mode for now
-    if (selectedGame == AMOUNT_OF_MODES - 1) {
-      selectedGame = 0;
+    if (selectedMode == AMOUNT_OF_MODES - 1) {
+      selectedMode = 0;
     }
     lcdPrint("  Select mode:  ", 0, true);
-    printGameOption();
+    printModeOption();
   }
 }
 
@@ -399,26 +428,26 @@ void handleButtonConfirm() {
   if (!gameOn) {
     buttonConfirm.read();
     if (buttonConfirm.wasPressed()) {
-      if (isGameSelected) {
+      if (isModeSelected) {
         String txt;
-        gameLength = gameParams;
-        isGameSelected = false;
+        modeLength = modeParams;
+        isModeSelected = false;
         gameOn = true;
-        if (selectedGame == 0) {
+        if (selectedMode == 0) {
           txt = "SPEED ";
-          txt.concat(gameParams / 1000);
+          txt.concat(modeParams / 1000);
           txt.concat(" secs:  ");
         } else {
           txt = "REACT ";
-          txt.concat(gameParams);
+          txt.concat(modeParams);
           txt.concat(" rounds:");
         }
         lcdPrint(txt, 0, false);
         lcdPrint("3 blinks n start", 1, false);
         return;
       }
-      isGameSelected = true;
-      switch (selectedGame) {
+      isModeSelected = true;
+      switch (selectedMode) {
         case 0:
           lcdPrint("Mode: SPEED", 0, true);
           break;
@@ -426,34 +455,34 @@ void handleButtonConfirm() {
           lcdPrint("Mode: REACT", 0, true);
           break;
         case 2:
-          isGameSelected = false;
+          lcdPrint("Mode: SPEED", 0, true);
           gameOn = true;
           return;
       }
-      gameParams = gameParamsSettings[selectedGame][0];
-      printGameParams();
+      modeParams = modeParamsSettings[selectedMode][0];
+      printModeParams();
     }
   }
 }
 
-void printGameParams() {
+void printModeParams() {
   lcd.setCursor(0, 1);
   String txt;
-  if (selectedGame == 0) {
+  if (selectedMode == 0) {
     txt = "set time > ";
-    txt.concat(gameParams / 1000);
+    txt.concat(modeParams / 1000);
     txt.concat(" s ");
     lcdPrint(txt, 1, false);
     return;
   }
   txt = "set rounds > ";
-  txt.concat(gameParams);
+  txt.concat(modeParams);
   txt.concat(" ");
   lcdPrint(txt, 1, false);
 }
 
-void printGameOption() {
-  switch (selectedGame) {
+void printModeOption() {
+  switch (selectedMode) {
     case 0:
       lcdPrint("---> SPEED <----", 1, false);
       return;
