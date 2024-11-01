@@ -21,8 +21,8 @@ const int SENSORS[AMOUNT_OF_SENSORS][3] = {
 unsigned long startGameMillis = 0,
   gameParams = 0,
   gameParamsSettings[AMOUNT_OF_MODES][2] = {
-    {10, MAX_ROUNDS},
     {30000, 180000},
+    {10, MAX_ROUNDS},
     {0, 0},
     {0, 0}
   };
@@ -128,7 +128,7 @@ void loop() {
 void handleDetected() {
   Serial.println("pegou");
   resetLap();
-  if (selectedGame == 0) {
+  if (selectedGame == 1) {
     if (gameLap == gameLength) {
       handleEndGame();
       return;
@@ -143,14 +143,14 @@ void handleStartGame() {
     delay(500);
     digitalWrite(GAME_LED, HIGH);
     lcdPrint("    GAME ON!    ", 0, true);
-    if (selectedGame == 1) {
+    if (selectedGame == 0) {
       startGameMillis = millis();
     }
     detecting = true;
 }
 
 void handleTimeUp() {
-  if (selectedGame == 1 && startGameMillis > 0 && millis() - startGameMillis > gameParams) {
+  if (selectedGame == 0 && startGameMillis > 0 && millis() - startGameMillis > gameParams) {
     handleEndGame();
   }
 }
@@ -159,7 +159,7 @@ void sortSensor() {
   selectedSensor = random(AMOUNT_OF_SENSORS);
   Serial.println();
   Serial.println(selectedSensor);
-  if (selectedGame == 1) {
+  if (selectedGame == 0) {
     while (selectedSensor == lastSelectedSensor) {
       selectedSensor = random(AMOUNT_OF_SENSORS);
     };
@@ -179,7 +179,7 @@ void handleDetection() {
 
 void handleLapResult() {
   endMillis = millis();
-  if (selectedGame == 0) {
+  if (selectedGame == 1) {
     responseTime = endMillis - startMillis;
     results[gameLap] = responseTime;
   }
@@ -214,7 +214,7 @@ void resetGameProps() {
 }
 
 void handleEndGameResults() {
-  if (selectedGame == 0) {
+  if (selectedGame == 1) {
     long totalResponseTime = 0;
     for (int i = 0; i < gameLap; i++) {
       long result = results[i];
@@ -270,7 +270,7 @@ void handleDetectionStart() {
 }
 
 void printResultsSerial() {
-  if (selectedGame == 0) {
+  if (selectedGame == 1) {
     Serial.println();
     Serial.println();
     Serial.println("*************************");
@@ -305,6 +305,14 @@ void printResultsLCD() {
   String lcdRow0, lcdRow1;
   switch (selectedGame) {
     case 0:
+      lcdRow0 = "Time: ";
+      lcdRow0.concat(gameParams / 1000);
+      lcdRow0.concat(" secs    ");
+      lcdRow1 = "Total: ";
+      lcdRow1.concat(gameLap);
+      lcdRow1.concat(" hits   ");
+      break;
+    case 1:
       lcdRow0 = "Media: ";
       lcdRow0.concat(avarage);
       lcdRow0.concat("ms");
@@ -312,14 +320,6 @@ void printResultsLCD() {
       lcdRow1.concat(fastest);
       lcdRow1.concat("  +: ");
       lcdRow1.concat(slowest);
-      break;
-    case 1:
-      lcdRow0 = "Time: ";
-      lcdRow0.concat(gameParams / 1000);
-      lcdRow0.concat(" secs    ");
-      lcdRow1 = "Total: ";
-      lcdRow1.concat(gameLap);
-      lcdRow1.concat(" hits   ");
       break;
     case 2:
       lcdRow0 = "SPEED ln 1";
@@ -404,7 +404,7 @@ void handleButtonConfirm() {
         gameLength = gameParams;
         isGameSelected = false;
         gameOn = true;
-        if (selectedGame == 1) {
+        if (selectedGame == 0) {
           txt = "SPEED ";
           txt.concat(gameParams / 1000);
           txt.concat(" secs:  ");
@@ -420,10 +420,10 @@ void handleButtonConfirm() {
       isGameSelected = true;
       switch (selectedGame) {
         case 0:
-          lcdPrint("Mode: REACT", 0, true);
+          lcdPrint("Mode: SPEED", 0, true);
           break;
         case 1:
-          lcdPrint("Mode: SPEED", 0, true);
+          lcdPrint("Mode: REACT", 0, true);
           break;
         case 2:
           isGameSelected = false;
@@ -439,7 +439,7 @@ void handleButtonConfirm() {
 void printGameParams() {
   lcd.setCursor(0, 1);
   String txt;
-  if (selectedGame == 1) {
+  if (selectedGame == 0) {
     txt = "set time > ";
     txt.concat(gameParams / 1000);
     txt.concat(" s ");
@@ -454,11 +454,11 @@ void printGameParams() {
 
 void printGameOption() {
   switch (selectedGame) {
-    case  0:
-      lcdPrint("---> REACT <----", 1, false);
+    case 0:
+      lcdPrint("---> SPEED <----", 1, false);
       return;
     case 1:
-      lcdPrint("---> SPEED <----", 1, false);
+      lcdPrint("---> REACT <----", 1, false);
       return;
     case 2:
       lcdPrint("---> MEMORY <---", 1, false);
