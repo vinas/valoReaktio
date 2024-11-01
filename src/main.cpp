@@ -4,15 +4,15 @@
 #include <NewPing.h>
 #include "ButtonClass.h"
 
-const int GAME_LED = 14,
+const int GAME_LED = 16,
   sensors[4][3] = {
     {2, 3, 4},
     {5, 6, 7},
     {8, 9, 10},
-    {11, 12, 17}
+    {11, 12, 13}
   },
   MAX_ROUNDS = 100,
-  DETECTION_RANGE = 20,
+  DETECTION_RANGE = 12,
   MAX_DETECTION_RANGE = 100,
   AMOUNT_OF_MODES = 3;
 
@@ -30,7 +30,6 @@ long startMillis,
 int selectedSensor,
   lastSelectedSensor,
   gameLength,
-  distance,
   gameLap = 0,
   selectedGame = -1; // 0 = REACT, 1 = SPEED, 3 = MEMORY
 
@@ -40,8 +39,8 @@ bool detecting,
   gameOn,
   isGameSelected = false;
 
-Button buttonSelect(15);
-Button buttonConfirm(16);
+Button buttonSelect(14);
+Button buttonConfirm(15);
 LiquidCrystal_I2C lcd(0x27, 16, 2);
 
 NewPing sonar[4] = {
@@ -75,11 +74,15 @@ void printGameParams();
 void printGameOption();
 void handleGameReset();
 void resetGameProps();
+void startRoutine();
 void lcdPrint(String text, int row, bool clear);
+bool senseSomething(int sensor);
+bool handleSensorStartRoutine(int sensor);
 
 void setup() {
   initLCD();
   initPins();
+  startRoutine();
   initGame();
   Serial.begin(9600);
 }
@@ -106,6 +109,7 @@ void loop() {
 }
 
 void handleDetected() {
+  Serial.println("pegou");
   resetLap();
   if (selectedGame == 0) {
     if (gameLap == gameLength) {
@@ -136,6 +140,8 @@ void handleTimeUp() {
 
 void sortSensor() {
   selectedSensor = random(4);
+  Serial.println();
+  Serial.println(selectedSensor);
   if (selectedGame == 1) {
     while (selectedSensor == lastSelectedSensor) {
       selectedSensor = random(4);
@@ -146,6 +152,7 @@ void sortSensor() {
 }
 
 void handleDetection() {
+  int distance;
   distance = sonar[selectedSensor].ping() / US_ROUNDTRIP_CM;
   if (distance > 0 && distance < DETECTION_RANGE) {
     digitalWrite(sensors[selectedSensor][2], LOW);
@@ -325,8 +332,6 @@ void initLCD() {
   lcd.init();
   lcd.clear();
   lcd.backlight();
-  lcdPrint("  Press SELECT  ", 0, false);
-  lcdPrint("    to start    ", 1, false);
 }
 
 void initPins() {
@@ -349,6 +354,8 @@ void initGame() {
   detected = false;
   countingDetection = false;
   gameOn = false;
+  lcdPrint("WHITE to CHANGE", 0, true);
+  lcdPrint("BLUE to CHOOSE", 1, false);
 }
 
 void handleButtonSelect() {
@@ -449,6 +456,7 @@ void printGameOption() {
 
 void handleGameReset() {
   if (gameOn) {
+    digitalWrite(GAME_LED, LOW);
     turnOffSensorLeds();
     resetGameProps();
   }
@@ -460,4 +468,103 @@ void lcdPrint(String text, int row, bool clear) {
   }
   lcd.setCursor(0, row);
   lcd.print(text);
+}
+
+void startRoutine() {
+  int report[4];
+  String reportMsgRow0, reportMsgRow1, reportMsgRow1Final;
+  
+  lcdPrint("Starting...", 0, true);
+  digitalWrite(sensors[0][2], HIGH);
+  report[0] = handleSensorStartRoutine(0);
+
+  delay(300);
+  digitalWrite(sensors[0][2], LOW);
+  delay(100);
+
+  lcdPrint("Starting........", 0, true);
+  report[1] = handleSensorStartRoutine(1);
+
+  delay(300);
+  digitalWrite(sensors[1][2], LOW);
+  delay(100);
+
+  lcdPrint("........", 1, false);
+  digitalWrite(sensors[2][2], HIGH);
+  report[2] = handleSensorStartRoutine(2);
+
+  delay(300);
+  digitalWrite(sensors[2][2], LOW);
+  delay(100);
+
+  lcdPrint("................", 1, false);
+  digitalWrite(sensors[3][2], HIGH);
+  report[3] = handleSensorStartRoutine(3);
+  
+  delay(300);
+  digitalWrite(sensors[3][2], LOW);
+  delay(100);
+
+  reportMsgRow0 = "STATUS:";
+
+  for (int i = 0; i < 4; i++) {
+    if (i < 2) {
+      reportMsgRow0.concat(" ");
+      reportMsgRow0.concat(i);
+      if (report[i] == true) {
+        reportMsgRow0.concat(":B");
+        continue;
+      }
+      reportMsgRow0.concat(":G");
+      continue;
+    }
+    reportMsgRow1.concat(" ");
+    reportMsgRow1.concat(i);
+    if (report[i] == true) {
+      reportMsgRow1.concat(":B");
+      continue;
+    }
+    reportMsgRow1.concat(":G");
+  }
+
+  lcdPrint(reportMsgRow0, 0, true);
+  reportMsgRow1Final = reportMsgRow1;
+  reportMsgRow1Final.concat("    (5)");
+  lcdPrint(reportMsgRow1Final, 1, false);
+  delay(1000);
+  reportMsgRow1Final = reportMsgRow1;
+  reportMsgRow1Final.concat("    (4)");
+  lcdPrint(reportMsgRow1Final, 1, false);
+  delay(1000);
+  reportMsgRow1Final = reportMsgRow1;
+  reportMsgRow1Final.concat("    (3)");
+  lcdPrint(reportMsgRow1Final, 1, false);
+  delay(1000);
+  reportMsgRow1Final = reportMsgRow1;
+  reportMsgRow1Final.concat("    (2)");
+  lcdPrint(reportMsgRow1Final, 1, false);
+  delay(1000);
+  reportMsgRow1Final = reportMsgRow1;
+  reportMsgRow1Final.concat("    (1)");
+  lcdPrint(reportMsgRow1Final, 1, false);
+  delay(1000);
+}
+
+bool senseSomething(int sensor) {
+  int distance = sonar[sensor].ping() / US_ROUNDTRIP_CM;
+  return (distance > 0 && distance < DETECTION_RANGE);
+};
+
+bool handleSensorStartRoutine(int sensor) {
+  long startedAt = millis();
+  bool moveOn = false, error = false;
+  digitalWrite(sensors[sensor][2], HIGH);
+  while (moveOn == false) {
+    moveOn = senseSomething(sensor);
+    if (millis() - startedAt > 15000) {
+      moveOn = true;
+      error = true;
+    }
+  }
+  return error;
 }
