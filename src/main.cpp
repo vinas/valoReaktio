@@ -31,7 +31,7 @@ int selectedSensor,
   lastSelectedSensor,
   gameLength,
   gameLap = 0,
-  selectedGame = -1; // 0 = REACT, 1 = SPEED, 3 = MEMORY
+  selectedGame = -1; // 0 = REACT, 1 = SPEED, 3 = MEMORY, 4 = PURSUIT
 
 bool detecting,
   detected,
@@ -152,9 +152,7 @@ void sortSensor() {
 }
 
 void handleDetection() {
-  int distance;
-  distance = sonar[selectedSensor].ping() / US_ROUNDTRIP_CM;
-  if (distance > 0 && distance < DETECTION_RANGE) {
+  if (senseSomething(selectedSensor)) {
     digitalWrite(sensors[selectedSensor][2], LOW);
     handleLapResult();
     detected = true;
