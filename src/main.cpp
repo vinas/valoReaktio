@@ -4,19 +4,28 @@
 #include <NewPing.h>
 #include "ButtonClass.h"
 
-const int GAME_LED = 16,
-  sensors[4][3] = {
-    {2, 3, 4},
-    {5, 6, 7},
-    {8, 9, 10},
-    {11, 12, 13}
-  },
+const int AMOUNT_OF_SENSORS = 4,
+  GAME_LED = 16,
   MAX_ROUNDS = 100,
   DETECTION_RANGE = 12,
-  MAX_DETECTION_RANGE = 100,
-  AMOUNT_OF_MODES = 3;
+  MAX_DETECTION_RANGE_CM = 100,
+  AMOUNT_OF_MODES = 4;
 
-unsigned long startGameMillis = 0, gameParams = 0, gameParamsSettings[3][2] = {{10, MAX_ROUNDS}, {30000, 180000}, {0, 0}};
+const int SENSORS[AMOUNT_OF_SENSORS][3] = {
+  {2, 3, 4},
+  {5, 6, 7},
+  {8, 9, 10},
+  {11, 12, 13}
+};
+
+unsigned long startGameMillis = 0,
+  gameParams = 0,
+  gameParamsSettings[AMOUNT_OF_MODES][2] = {
+    {10, MAX_ROUNDS},
+    {30000, 180000},
+    {0, 0},
+    {0, 0}
+  };
 
 long startMillis,
   endMillis,
@@ -30,24 +39,27 @@ long startMillis,
 int selectedSensor,
   lastSelectedSensor,
   gameLength,
-  gameLap = 0,
+  gameLap,
+  dots = 0,
   selectedGame = -1; // 0 = REACT, 1 = SPEED, 3 = MEMORY, 4 = PURSUIT
 
 bool detecting,
   detected,
   countingDetection,
   gameOn,
-  isGameSelected = false;
+  isGameSelected;
+
+String sensorReportMsg[2] = {"", ""};
 
 Button buttonSelect(14);
 Button buttonConfirm(15);
 LiquidCrystal_I2C lcd(0x27, 16, 2);
 
-NewPing sonar[4] = {
-  NewPing(sensors[0][0], sensors[0][1], 100),
-  NewPing(sensors[1][0], sensors[1][1], 100),
-  NewPing(sensors[2][0], sensors[2][1], 100),
-  NewPing(sensors[3][0], sensors[3][1], 100)
+NewPing sonars[AMOUNT_OF_SENSORS] = {
+  NewPing(SENSORS[0][0], SENSORS[0][1], MAX_DETECTION_RANGE_CM),
+  NewPing(SENSORS[1][0], SENSORS[1][1], MAX_DETECTION_RANGE_CM),
+  NewPing(SENSORS[2][0], SENSORS[2][1], MAX_DETECTION_RANGE_CM),
+  NewPing(SENSORS[3][0], SENSORS[3][1], MAX_DETECTION_RANGE_CM)
 };
 
 void handleTimeUp();
@@ -67,14 +79,16 @@ void turnOffSensorLeds();
 void turnOnSensorLeds();
 void initLCD();
 void initPins();
-void initGame();
+void initRandomSeed();
 void handleButtonSelect();
 void handleButtonConfirm();
 void printGameParams();
 void printGameOption();
 void handleGameReset();
 void resetGameProps();
-void startRoutine();
+void checkSensors();
+void printSensorsReport();
+void printMainMenu();
 void lcdPrint(String text, int row, bool clear);
 bool senseSomething(int sensor);
 bool handleSensorStartRoutine(int sensor);
@@ -82,9 +96,12 @@ bool handleSensorStartRoutine(int sensor);
 void setup() {
   initLCD();
   initPins();
-  startRoutine();
-  initGame();
-  Serial.begin(9600);
+  initRandomSeed();
+  checkSensors();
+  printSensorsReport();
+  resetGameProps();
+  printMainMenu();
+  // Serial.begin(9600);
 }
 
 void loop() {
@@ -139,21 +156,21 @@ void handleTimeUp() {
 }
 
 void sortSensor() {
-  selectedSensor = random(4);
+  selectedSensor = random(AMOUNT_OF_SENSORS);
   Serial.println();
   Serial.println(selectedSensor);
   if (selectedGame == 1) {
     while (selectedSensor == lastSelectedSensor) {
-      selectedSensor = random(4);
+      selectedSensor = random(AMOUNT_OF_SENSORS);
     };
     lastSelectedSensor = selectedSensor;
   }
-  digitalWrite(sensors[selectedSensor][2], HIGH);
+  digitalWrite(SENSORS[selectedSensor][2], HIGH);
 }
 
 void handleDetection() {
   if (senseSomething(selectedSensor)) {
-    digitalWrite(sensors[selectedSensor][2], LOW);
+    digitalWrite(SENSORS[selectedSensor][2], LOW);
     handleLapResult();
     detected = true;
     detecting = false;
@@ -313,53 +330,51 @@ void printResultsLCD() {
 }
 
 void turnOffSensorLeds() {
-  digitalWrite(sensors[0][2], LOW);
-  digitalWrite(sensors[1][2], LOW);
-  digitalWrite(sensors[2][2], LOW);
-  digitalWrite(sensors[3][2], LOW);
+  digitalWrite(SENSORS[0][2], LOW);
+  digitalWrite(SENSORS[1][2], LOW);
+  digitalWrite(SENSORS[2][2], LOW);
+  digitalWrite(SENSORS[3][2], LOW);
 }
 
 void turnOnSensorLeds() {
-  digitalWrite(sensors[0][2], HIGH);
-  digitalWrite(sensors[1][2], HIGH);
-  digitalWrite(sensors[2][2], HIGH);
-  digitalWrite(sensors[3][2], HIGH);
+  digitalWrite(SENSORS[0][2], HIGH);
+  digitalWrite(SENSORS[1][2], HIGH);
+  digitalWrite(SENSORS[2][2], HIGH);
+  digitalWrite(SENSORS[3][2], HIGH);
 }
 
 void initLCD() {
   lcd.init();
   lcd.clear();
   lcd.backlight();
+  lcdPrint("   Starting...  ", 0, true);
 }
 
 void initPins() {
   pinMode(buttonSelect.getPin(), INPUT_PULLUP);
   pinMode(buttonConfirm.getPin(), INPUT_PULLUP);
-  pinMode(sensors[0][2], OUTPUT);
-  pinMode(sensors[1][2], OUTPUT);
-  pinMode(sensors[2][2], OUTPUT);
-  pinMode(sensors[3][2], OUTPUT);
   pinMode(GAME_LED, OUTPUT);
+  for (int i = 0; i < AMOUNT_OF_SENSORS; i++) {
+    pinMode(SENSORS[i][2], OUTPUT);
+  }
 }
 
-void initGame() {
+void initRandomSeed() {
   size_t const address {0};
   unsigned int seed {};
   EEPROM.get(address, seed);
   randomSeed(seed);
   EEPROM.put(address, seed + 1);
-  detecting = false;
-  detected = false;
-  countingDetection = false;
-  gameOn = false;
-  lcdPrint("WHITE to CHANGE", 0, true);
-  lcdPrint("BLUE to CHOOSE", 1, false);
 }
 
 void handleButtonSelect() {
   buttonSelect.read();
   if (buttonSelect.wasPressed()) {
-    handleGameReset();
+    if (gameOn) {
+      handleGameReset();
+      printMainMenu();
+      return;
+    }
     if (isGameSelected) {
       if (gameParams >= gameParamsSettings[selectedGame][1]) {
         gameParams = gameParamsSettings[selectedGame][0];
@@ -468,95 +483,39 @@ void lcdPrint(String text, int row, bool clear) {
   lcd.print(text);
 }
 
-void startRoutine() {
-  int report[4];
-  String reportMsgRow0, reportMsgRow1, reportMsgRow1Final;
-  
-  lcdPrint("Starting...", 0, true);
-  digitalWrite(sensors[0][2], HIGH);
-  report[0] = handleSensorStartRoutine(0);
-
-  delay(300);
-  digitalWrite(sensors[0][2], LOW);
-  delay(100);
-
-  lcdPrint("Starting........", 0, true);
-  report[1] = handleSensorStartRoutine(1);
-
-  delay(300);
-  digitalWrite(sensors[1][2], LOW);
-  delay(100);
-
-  lcdPrint("........", 1, false);
-  digitalWrite(sensors[2][2], HIGH);
-  report[2] = handleSensorStartRoutine(2);
-
-  delay(300);
-  digitalWrite(sensors[2][2], LOW);
-  delay(100);
-
-  lcdPrint("................", 1, false);
-  digitalWrite(sensors[3][2], HIGH);
-  report[3] = handleSensorStartRoutine(3);
-  
-  delay(300);
-  digitalWrite(sensors[3][2], LOW);
-  delay(100);
-
-  reportMsgRow0 = "STATUS:";
-
-  for (int i = 0; i < 4; i++) {
+void checkSensors() {
+  int currentRow = 0;
+  String reportMsgRow1Final;
+  sensorReportMsg[0] = "STATUS:";
+  for (int i = 0; i < AMOUNT_OF_SENSORS; i++) {
     if (i < 2) {
-      reportMsgRow0.concat(" ");
-      reportMsgRow0.concat(i);
-      if (report[i] == true) {
-        reportMsgRow0.concat(":B");
-        continue;
-      }
-      reportMsgRow0.concat(":G");
-      continue;
+      currentRow = 0;
+    } else {
+      currentRow = 1;
     }
-    reportMsgRow1.concat(" ");
-    reportMsgRow1.concat(i);
-    if (report[i] == true) {
-      reportMsgRow1.concat(":B");
-      continue;
+    sensorReportMsg[currentRow].concat(" ");
+    sensorReportMsg[currentRow].concat(i);
+    digitalWrite(SENSORS[i][2], HIGH);
+    if (handleSensorStartRoutine(i) == true) {
+      sensorReportMsg[currentRow].concat(i);
+      sensorReportMsg[currentRow].concat(":B");
+    } else {
+      sensorReportMsg[currentRow].concat(":G");
     }
-    reportMsgRow1.concat(":G");
+    digitalWrite(SENSORS[i][2], LOW);
+    delay(100);
   }
-
-  lcdPrint(reportMsgRow0, 0, true);
-  reportMsgRow1Final = reportMsgRow1;
-  reportMsgRow1Final.concat("    (5)");
-  lcdPrint(reportMsgRow1Final, 1, false);
-  delay(1000);
-  reportMsgRow1Final = reportMsgRow1;
-  reportMsgRow1Final.concat("    (4)");
-  lcdPrint(reportMsgRow1Final, 1, false);
-  delay(1000);
-  reportMsgRow1Final = reportMsgRow1;
-  reportMsgRow1Final.concat("    (3)");
-  lcdPrint(reportMsgRow1Final, 1, false);
-  delay(1000);
-  reportMsgRow1Final = reportMsgRow1;
-  reportMsgRow1Final.concat("    (2)");
-  lcdPrint(reportMsgRow1Final, 1, false);
-  delay(1000);
-  reportMsgRow1Final = reportMsgRow1;
-  reportMsgRow1Final.concat("    (1)");
-  lcdPrint(reportMsgRow1Final, 1, false);
-  delay(1000);
 }
 
 bool senseSomething(int sensor) {
-  int distance = sonar[sensor].ping() / US_ROUNDTRIP_CM;
+  int distance = sonars[sensor].ping() / US_ROUNDTRIP_CM;
   return (distance > 0 && distance < DETECTION_RANGE);
 };
 
 bool handleSensorStartRoutine(int sensor) {
   long startedAt = millis();
   bool moveOn = false, error = false;
-  digitalWrite(sensors[sensor][2], HIGH);
+  digitalWrite(SENSORS[sensor][2], HIGH);
   while (moveOn == false) {
     moveOn = senseSomething(sensor);
     if (millis() - startedAt > 15000) {
@@ -565,4 +524,22 @@ bool handleSensorStartRoutine(int sensor) {
     }
   }
   return error;
+}
+
+void printSensorsReport() {
+  String reportMsgRow1Final;
+  for (int i = 5; i > 0; i--) {
+    lcdPrint(sensorReportMsg[0], 0, false);
+    reportMsgRow1Final = sensorReportMsg[1];
+    reportMsgRow1Final.concat("    (");
+    reportMsgRow1Final.concat(i);
+    reportMsgRow1Final.concat(")");
+    lcdPrint(reportMsgRow1Final, 1, false);
+    delay(1000);
+  }
+}
+
+void printMainMenu() {
+  lcdPrint("WHITE to CHANGE", 0, true);
+  lcdPrint("BLUE to CHOOSE", 1, false);
 }
