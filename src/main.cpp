@@ -1,4 +1,7 @@
+#include <Arduino.h>
 #include <Wire.h>
+#include "SoftwareSerial.h"
+#include "WiFiEsp.h"
 #include <LiquidCrystal_I2C.h>
 #include <EEPROM.h>
 #include <NewPing.h>
@@ -9,7 +12,11 @@ const int AMOUNT_OF_SENSORS = 4,
   MAX_ROUNDS = 100,
   DETECTION_RANGE = 12,
   MAX_DETECTION_RANGE_CM = 100,
-  AMOUNT_OF_MODES = 2;
+  AMOUNT_OF_MODES = 2,
+  SRV_PORT = 80;
+
+const char SSID[] = "Mimmi-2.4G",
+  PASS[] = "0lenK4un1s";
 
 const int SENSORS[AMOUNT_OF_SENSORS][3] = {
   {2, 3, 4},
@@ -38,6 +45,8 @@ int selectedSensor,
   lastSelectedSensor,
   modeLength,
   gameLap,
+  status = WL_IDLE_STATUS,
+  ledState = 0,
   selectedMode = -1; // 0 = SPEED, 1 = REACT
 
 bool detecting,
@@ -47,6 +56,9 @@ bool detecting,
   isModeSelected;
 
 String sensorReportMsg[2] = {"", ""};
+
+SoftwareSerial ESP8266(20, 21);
+WiFiEspServer server(SRV_PORT);
 
 Button buttonSelect(14);
 Button buttonConfirm(15);
@@ -90,6 +102,11 @@ void handleDisplayInfo();
 void lcdPrint(String text, int row, bool clear);
 bool senseSomething(int sensor);
 bool handleSensorStartRoutine(int sensor);
+void checkWifiShield();
+void connectToWifi();
+void handleClients();
+void sendResponse(WiFiEspClient client, String payload, bool isSuccess);
+void handleCommand(WiFiEspClient client, String command);
 
 void setup() {
   initLCD();
@@ -98,11 +115,24 @@ void setup() {
   checkSensors();
   // printSensorsReport();
   resetModeProps();
-  printMainMenu();
+
+  // SERVER SETUP BELOW
   // Serial.begin(9600);
+  // ESP8266.begin(9600);
+  // WiFi.init(&ESP8266);
+  // checkWifiShield();
+  // connectToWifi();
+  // server.begin();
+
+  printMainMenu();
 }
 
 void loop() {
+  // SERVER IMPLEMENTATION
+  // if (!gameOn) {
+  //   handleClients();
+  // }
+
   if (gameOn && selectedMode == 0) {
     handleDisplayInfo();
     handleTimeUp();
@@ -542,4 +572,74 @@ void handleDisplayInfo() {
   }
   time.concat("s    ");
   lcdPrint(time, 1, false);
+}
+
+void checkWifiShield() {
+  if (WiFi.status() == WL_NO_SHIELD) Serial.println(F("[IoT-Beta] No wifi module detected"));
+}
+
+void connectToWifi() {
+  int attempts = 3;
+  while (status != WL_CONNECTED && attempts > 0) {
+    status = WiFi.begin(SSID, PASS);
+    attempts--;
+  }
+  if (status != WL_CONNECTED) {
+    Serial.println(F("[IoT-Beta] Could not connect after 3 attempts"));
+    while (1);
+  }
+  Serial.print(F("[IoT-Beta] IP Address: "));
+  Serial.println(WiFi.localIP());
+}
+
+void handleClients() {
+  WiFiEspClient client = server.available();
+  if (client) {
+    String request;
+    boolean currentLineIsBlank = true;
+    while (client.connected()) {
+      if (client.available()) {
+        char c = client.read();
+        request.concat(c);
+        if (c == '\n' && currentLineIsBlank) {
+          int startFlag = request.indexOf(F("/api"));
+          if (startFlag > 0) {
+            startFlag = startFlag + 5;
+            int spaceIdx = request.indexOf(F(" "), startFlag);
+            int newRow = request.indexOf('\n', startFlag);
+            String command = request.substring(startFlag, (spaceIdx < newRow) ? spaceIdx : newRow);
+            if (command.length() > 0) {
+              handleCommand(client, command);
+              return;
+            }
+          }
+          sendResponse(client, F("{\"error\":\"Unknown command\"})"), false);
+          break;
+        }
+        if (c == '\n') {
+          currentLineIsBlank = true;
+          continue;
+        }
+        if (c != '\r') currentLineIsBlank = false;
+      }
+    }
+    delay(10);
+    client.stop();
+  }
+}
+
+void handleCommand(WiFiEspClient client, String command) {
+  if (command == "healthcheck") {
+    sendResponse(client, F("OK"), true);
+    return;
+  }
+  sendResponse(client, F("{\"error\":\"Unknown command\"}"), false);
+}
+
+void sendResponse(WiFiEspClient client, String payload, bool isSuccess) {
+  client.print((isSuccess) ? F("HTTP/1.1 200 OK\r\n") : F("HTTP/1.1 400 Bad Request\r\n"));
+  client.print(F("Content-Type: application/json\r\nContent-Length: "));
+  client.print(payload.length());
+  client.print(F("\r\nConnection: close\r\n\r\n"));
+  client.print(payload);
 }
