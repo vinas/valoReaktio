@@ -143,7 +143,7 @@ void handleStartMode() {
     blinkModeLed();
     delay(500);
     digitalWrite(GAME_LED, HIGH);
-    lcdPrint("    GAME ON!    ", 0, true);
+    lcdPrint("    VALENDO!    ", 0, true);
     if (selectedMode == 0) {
       startModeMillis = millis();
     }
@@ -188,7 +188,7 @@ void handleLapResult() {
 void handleEndMode() {
   digitalWrite(GAME_LED, LOW);
   delay(200);
-  lcdPrint("   GAME OVER    ", 0, true);
+  lcdPrint("   !! FIM !!    ", 0, true);
   blinkModeLed();
   handleEndModeResults();
   printResultsLCD();
@@ -304,12 +304,12 @@ void printResultsLCD() {
   String lcdRow0, lcdRow1;
   switch (selectedMode) {
     case 0:
-      lcdRow0 = "Time: ";
+      lcdRow0 = "Tempo: ";
       lcdRow0.concat(modeParams / 1000);
-      lcdRow0.concat(" secs    ");
+      lcdRow0.concat(" segs    ");
       lcdRow1 = "Total: ";
       lcdRow1.concat(gameLap);
-      lcdRow1.concat(" hits   ");
+      lcdRow1.concat(" pts    ");
       break;
     case 1:
       lcdRow0 = "Media: ";
@@ -319,10 +319,6 @@ void printResultsLCD() {
       lcdRow1.concat(fastest);
       lcdRow1.concat("  +: ");
       lcdRow1.concat(slowest);
-      break;
-    case 2:
-      lcdRow0 = "SPEED ln 1";
-      lcdRow1 = "SPEED ln 1";
   }
   lcdPrint(lcdRow0, 0, true);
   lcdPrint(lcdRow1, 1, false);
@@ -346,7 +342,8 @@ void initLCD() {
   lcd.init();
   lcd.clear();
   lcd.backlight();
-  lcdPrint("   Starting...  ", 0, true);
+  lcdPrint("  Iniciando...  ", 0, true);
+  lcdPrint("(teste sensores)", 1, false);
 }
 
 void initPins() {
@@ -387,7 +384,7 @@ void handleButtonSelect() {
     if (selectedMode == AMOUNT_OF_MODES) {
       selectedMode = 0;
     }
-    lcdPrint("  Select mode:  ", 0, true);
+    lcdPrint("Selecionar modo:", 0, true);
     printModeOption();
   }
 }
@@ -404,18 +401,18 @@ void handleButtonConfirm() {
         if (selectedMode == 0) {
           txt = "SPEED ";
           txt.concat(modeParams / 1000);
-          txt.concat(" secs:  ");
+          txt.concat(" segs:  ");
         } else {
           txt = "REACT ";
           txt.concat(modeParams);
           txt.concat(" rounds:");
         }
         lcdPrint(txt, 0, false);
-        lcdPrint("3 blinks n start", 1, false);
+        lcdPrint("3, 2, 1 e comeca", 1, false);
         return;
       }
       isModeSelected = true;
-      lcdPrint((selectedMode == 0) ? "Mode: SPEED" : "Mode: REACT", 0, true);
+      lcdPrint((selectedMode == 0) ? "Modo: SPEED" : "Modo: REACT", 0, true);
       modeParams = modeParamsSettings[selectedMode][0];
       printModeParams();
     }
@@ -426,13 +423,13 @@ void printModeParams() {
   lcd.setCursor(0, 1);
   String txt;
   if (selectedMode == 0) {
-    txt = "set time > ";
+    txt = "def tempo > ";
     txt.concat(modeParams / 1000);
-    txt.concat(" s ");
+    txt.concat("s  ");
     lcdPrint(txt, 1, false);
     return;
   }
-  txt = "set rounds > ";
+  txt = "def rounds > ";
   txt.concat(modeParams);
   txt.concat(" ");
   lcdPrint(txt, 1, false);
@@ -519,14 +516,14 @@ void printSensorsReport() {
 }
 
 void printMainMenu() {
-  lcdPrint("WHITE to CHANGE", 0, true);
-  lcdPrint("BLUE to CHOOSE", 1, false);
+  lcdPrint("<== OPCOES", 0, true);
+  lcdPrint("    ESCOLHER ==>", 1, false);
 }
 
 void handleDisplayInfo() {
   String time;
   unsigned int timeDiff;
-  time = "Hits: ";
+  time = "Pts: ";
   time.concat(gameLap);
   time.concat(" - ");
   if (lastDisplayedTime == 0) {
@@ -540,6 +537,6 @@ void handleDisplayInfo() {
       time.concat(lastDisplayedTime);
     }
   }
-  time.concat("s    ");
+  time.concat("s     ");
   lcdPrint(time, 1, false);
 }
